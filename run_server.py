@@ -29,7 +29,7 @@ CONFIG = {
     # vLLM 서버 설정
     "vllm_host": os.environ.get("VLLM_HOST", "0.0.0.0"),
     "vllm_port": int(os.environ.get("VLLM_PORT", "8015")),
-    "tensor_parallel_size": int(os.environ.get("TP_SIZE", "1")),
+    "tensor_parallel_size": int(os.environ.get("TP_SIZE", "0")),  # 0 = 자동 감지
     "max_model_len": int(os.environ.get("MAX_MODEL_LEN", "262144")),
     "gpu_memory_utilization": float(os.environ.get("GPU_MEM_UTIL", "0.90")),
 
@@ -102,14 +102,42 @@ def _probe_vllm() -> bool:
 # ──────────────────────────────────────────────
 # vLLM 자동 기동
 # ──────────────────────────────────────────────
+def _detect_gpu_count() -> int:
+    """사용 가능한 GPU 수 자동 감지"""
+    try:
+        import torch
+        count = torch.cuda.device_count()
+    except Exception:
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5,
+            )
+            count = len(result.stdout.strip().splitlines()) if result.returncode == 0 else 1
+        except Exception:
+            count = 1
+    return max(count, 1)
+
+
+def _resolve_tp_size() -> int:
+    """TP_SIZE가 0이면 자동 감지, 아니면 설정값 사용"""
+    tp = CONFIG["tensor_parallel_size"]
+    if tp > 0:
+        return tp
+    detected = _detect_gpu_count()
+    print(f"[new_vloet] GPU 자동 감지: {detected}개 → tensor_parallel_size={detected}")
+    return detected
+
+
 def _build_vllm_cmd() -> str:
+    tp_size = _resolve_tp_size()
     return (
         f"nohup {sys.executable} -m vllm.entrypoints.openai.api_server "
         f"--model {CONFIG['model_path']} "
         f"--served-model-name {CONFIG['model_name']} "
         f"--host {CONFIG['vllm_host']} "
         f"--port {CONFIG['vllm_port']} "
-        f"--tensor-parallel-size {CONFIG['tensor_parallel_size']} "
+        f"--tensor-parallel-size {tp_size} "
         f"--max-model-len {CONFIG['max_model_len']} "
         f"--gpu-memory-utilization {CONFIG['gpu_memory_utilization']} "
         f"--trust-remote-code "
