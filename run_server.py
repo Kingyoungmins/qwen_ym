@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-new_vloet - Qwen 3.5 27B 내부망 서버
-server.py 실행 시 vLLM + OpenAI 호환 API 자동 기동
+new_vloet - Qwen 3.5 27B FP8 내부망 서버
+run_server.py 실행 시 vLLM + OpenAI 호환 API 자동 기동
 """
 
 import json
@@ -10,12 +10,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
 from urllib import error, request
-
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
+from functools import wraps
 
 # ──────────────────────────────────────────────
 # 설정 (내부망 환경에 맞게 수정)
@@ -51,7 +47,7 @@ VLLM_BASE_URL = f"http://127.0.0.1:{CONFIG['vllm_port']}/v1"
 # ──────────────────────────────────────────────
 def _auto_install():
     """첫 실행 시 필요한 패키지 자동 설치"""
-    required = ["fastapi", "uvicorn", "pydantic", "huggingface_hub"]
+    required = ["flask", "huggingface_hub"]
     missing = []
     for pkg in required:
         try:
@@ -232,71 +228,82 @@ def _start_vllm() -> None:
 
 
 # ──────────────────────────────────────────────
-# FastAPI 앱
+# Flask 앱
 # ──────────────────────────────────────────────
-app = FastAPI(title="new_vloet - Qwen 3.5 27B", version="1.0.0")
+from flask import Flask, request as flask_request, jsonify
+
+app = Flask(__name__)
+
 
 # ──────────────────────────────────────────────
-# Api-Key 인증
+# Api-Key 인증 데코레이터
 # ──────────────────────────────────────────────
-_api_key_header = APIKeyHeader(name="Api-Key")
+def require_api_key(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        api_key = flask_request.headers.get("Api-Key", "")
+        if api_key != CONFIG["api_key"]:
+            return jsonify({"error": "Invalid Api-Key"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 
-async def _verify_api_key(api_key: str = Depends(_api_key_header)) -> str:
-    if api_key != CONFIG["api_key"]:
-        raise HTTPException(status_code=401, detail="Invalid Api-Key")
-    return api_key
+# ──────────────────────────────────────────────
+# 엔드포인트
+# ──────────────────────────────────────────────
+@app.route("/v1/models", methods=["GET"])
+def models_health():
+    return "OK"
 
 
-class ChatRequest(BaseModel):
-    q: str = Field(..., min_length=1, description="사용자 질의")
-    image_data_url: str = Field(default="", description="data:image/... base64 (선택)")
-    max_tokens: int = Field(default=2048, ge=1, le=16384)
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    system_prompt: str = Field(default="", description="시스템 프롬프트 (선택)")
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    _start_vllm()
-
-
-@app.get("/health")
-async def health() -> dict[str, Any]:
+@app.route("/health", methods=["GET"])
+def health():
     vllm_ok = _probe_vllm()
-    return {
+    return jsonify({
         "ok": vllm_ok,
         "model": CONFIG["model_name"],
         "model_path": CONFIG["model_path"],
         "vllm_url": VLLM_BASE_URL,
         "vllm_ok": vllm_ok,
-    }
+    })
 
 
-@app.post("/v1/models/t2i:predict", dependencies=[Depends(_verify_api_key)])
-async def predict(req: ChatRequest) -> dict[str, Any]:
+@app.route("/v1/models/t2i:predict", methods=["POST"])
+@require_api_key
+def predict():
     """메인 엔드포인트 - 질의 → 응답"""
     t0 = time.time()
-    messages: list[dict[str, Any]] = []
+    req = flask_request.get_json(force=True)
+
+    q = req.get("q", "").strip()
+    if not q:
+        return jsonify({"error": "q is required"}), 400
+
+    image_data_url = req.get("image_data_url", "").strip()
+    max_tokens = req.get("max_tokens", 2048)
+    temperature = req.get("temperature", 0.7)
+    system_prompt = req.get("system_prompt", "").strip()
+
+    messages = []
 
     # 시스템 프롬프트
-    if req.system_prompt.strip():
-        messages.append({"role": "system", "content": req.system_prompt.strip()})
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
 
     # 사용자 메시지 (이미지 + 텍스트)
-    content: list[dict[str, Any]] = []
+    content = []
     image_used = False
-    if req.image_data_url.strip():
-        content.append({"type": "image_url", "image_url": {"url": req.image_data_url.strip()}})
+    if image_data_url:
+        content.append({"type": "image_url", "image_url": {"url": image_data_url}})
         image_used = True
-    content.append({"type": "text", "text": req.q})
+    content.append({"type": "text", "text": q})
     messages.append({"role": "user", "content": content})
 
     payload = {
         "model": CONFIG["model_name"],
         "messages": messages,
-        "max_tokens": req.max_tokens,
-        "temperature": req.temperature,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
         "top_p": 0.95,
     }
 
@@ -308,9 +315,9 @@ async def predict(req: ChatRequest) -> dict[str, Any]:
         )
     except error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="ignore")
-        raise HTTPException(status_code=500, detail=f"vLLM HTTP {e.code}: {detail}") from e
+        return jsonify({"error": f"vLLM HTTP {e.code}: {detail}"}), 500
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"vLLM 요청 실패: {e}") from e
+        return jsonify({"error": f"vLLM 요청 실패: {e}"}), 500
 
     choices = data.get("choices") or []
     answer = ""
@@ -318,8 +325,8 @@ async def predict(req: ChatRequest) -> dict[str, Any]:
         msg = choices[0].get("message") or {}
         answer = msg.get("content") or ""
 
-    return {
-        "query": req.q,
+    return jsonify({
+        "query": q,
         "answer": answer,
         "usage": data.get("usage"),
         "meta": {
@@ -327,7 +334,7 @@ async def predict(req: ChatRequest) -> dict[str, Any]:
             "image_used": image_used,
             "latency_ms": int((time.time() - t0) * 1000),
         },
-    }
+    })
 
 
 # ──────────────────────────────────────────────
@@ -360,10 +367,10 @@ def _ensure_tls_cert() -> None:
 if __name__ == "__main__":
     _auto_install()
     _ensure_tls_cert()
-    import uvicorn
+    _start_vllm()
 
     print("=" * 60)
-    print("  new_vloet - Qwen 3.5 27B Server (HTTPS)")
+    print("  new_vloet - Qwen 3.5 27B FP8 Server (HTTPS)")
     print(f"  모델:    {CONFIG['model_name']}")
     print(f"  경로:    {CONFIG['model_path']}")
     print(f"  vLLM:    {CONFIG['vllm_host']}:{CONFIG['vllm_port']}")
@@ -372,11 +379,8 @@ if __name__ == "__main__":
     print(f"  Api-Key: {CONFIG['api_key']}")
     print("=" * 60)
 
-    uvicorn.run(
-        app,
+    app.run(
         host=CONFIG["api_host"],
         port=CONFIG["api_port"],
-        ssl_certfile=str(CERT_FILE),
-        ssl_keyfile=str(KEY_FILE),
-        reload=False,
+        ssl_context=(str(CERT_FILE), str(KEY_FILE)),
     )
