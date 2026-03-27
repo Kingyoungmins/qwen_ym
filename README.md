@@ -27,6 +27,22 @@ python run_server.py
 4. vLLM 서버 기동 (reasoning parser, tool call parser 포함)
 5. HTTPS API 서버 시작 (`0.0.0.0:8790`)
 
+## 모델만 먼저 다운로드
+
+```bash
+python /home/adminym/new_vloet/download_qwen35_27b_fp8.py \
+  --output-dir /원하는/저장/경로
+```
+
+필요하면 토큰을 같이 넣을 수 있습니다.
+
+```bash
+HF_TOKEN=hf_xxx python /home/adminym/new_vloet/download_qwen35_27b_fp8.py \
+  --output-dir /원하는/저장/경로
+```
+
+이 스크립트는 `Qwen/Qwen3.5-27B-FP8`를 기본값으로 사용하고, 다운로드 실패 시 기존 파일을 유지한 채 계속 재시도합니다.
+
 ## 환경변수
 
 | 변수 | 기본값 | 설명 |
