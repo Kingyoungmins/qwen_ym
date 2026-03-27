@@ -30,7 +30,7 @@ CONFIG = {
     "vllm_host": os.environ.get("VLLM_HOST", "0.0.0.0"),
     "vllm_port": int(os.environ.get("VLLM_PORT", "8015")),
     "tensor_parallel_size": int(os.environ.get("TP_SIZE", "1")),
-    "max_model_len": int(os.environ.get("MAX_MODEL_LEN", "32768")),
+    "max_model_len": int(os.environ.get("MAX_MODEL_LEN", "262144")),
     "gpu_memory_utilization": float(os.environ.get("GPU_MEM_UTIL", "0.90")),
 
     # API 서버 설정

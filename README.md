@@ -38,7 +38,7 @@ python run_server.py
 | `API_PORT` | `8790` | API 서버 포트 |
 | `API_KEY` | `63616e76` | Api-Key 인증값 |
 | `TP_SIZE` | `1` | GPU 수 (tensor parallel) |
-| `MAX_MODEL_LEN` | `32768` | 최대 컨텍스트 길이 |
+| `MAX_MODEL_LEN` | `262144` | 최대 컨텍스트 길이 (256K) |
 | `GPU_MEM_UTIL` | `0.90` | GPU 메모리 사용률 |
 | `HF_TOKEN` | (없음) | HuggingFace 토큰 (비공개 모델 시 필요) |
 
