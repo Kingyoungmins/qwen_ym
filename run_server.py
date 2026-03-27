@@ -22,15 +22,15 @@ from pydantic import BaseModel, Field
 # ──────────────────────────────────────────────
 CONFIG = {
     # 모델 설정
-    "model_path": os.environ.get("MODEL_PATH", "/home/adminym/qwen3.5/Qwen3.5-27B"),
-    "model_name": os.environ.get("MODEL_NAME", "Qwen3.5-27B"),
-    "model_repo": os.environ.get("MODEL_REPO", "Qwen/Qwen3.5-27B"),  # HuggingFace repo ID
+    "model_path": os.environ.get("MODEL_PATH", "/data/public/qwen3.5/Qwen3.5-27B-FP8"),
+    "model_name": os.environ.get("MODEL_NAME", "Qwen3.5-27B-FP8"),
+    "model_repo": os.environ.get("MODEL_REPO", "Qwen/Qwen3.5-27B-FP8"),  # HuggingFace repo ID
 
     # vLLM 서버 설정
     "vllm_host": os.environ.get("VLLM_HOST", "0.0.0.0"),
     "vllm_port": int(os.environ.get("VLLM_PORT", "8015")),
-    "tensor_parallel_size": int(os.environ.get("TP_SIZE", "2")),  # 27B → GPU 2장 권장
-    "max_model_len": int(os.environ.get("MAX_MODEL_LEN", "200000")),
+    "tensor_parallel_size": int(os.environ.get("TP_SIZE", "1")),
+    "max_model_len": int(os.environ.get("MAX_MODEL_LEN", "32768")),
     "gpu_memory_utilization": float(os.environ.get("GPU_MEM_UTIL", "0.90")),
 
     # API 서버 설정
@@ -114,6 +114,10 @@ def _build_vllm_cmd() -> str:
         f"--gpu-memory-utilization {CONFIG['gpu_memory_utilization']} "
         f"--trust-remote-code "
         f"--dtype auto "
+        f"--reasoning-parser qwen3 "
+        f"--enforce-eager "
+        f"--enable-auto-tool-choice "
+        f"--tool-call-parser qwen3_coder "
         f">/tmp/new_vloet_vllm.log 2>&1 &"
     )
 
