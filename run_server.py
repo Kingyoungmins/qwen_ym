@@ -23,6 +23,7 @@ CONFIG = {
     "api_host": os.environ.get("API_HOST", "0.0.0.0"),
     "api_port": int(os.environ.get("API_PORT", "8790")),
     "api_key": os.environ.get("API_KEY", "63616e76"),
+    "vllm_api_key": os.environ.get("VLLM_API_KEY", "local-vllm"),
     "timeout_sec": int(os.environ.get("TIMEOUT_SEC", "180")),
     "model_name": os.environ.get("MODEL_NAME", "Qwen3.5-27B-FP8"),
 }
@@ -54,6 +55,7 @@ def _post_json(url, payload, timeout_sec):
     req = request.Request(url, data=body, headers={
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "Authorization": f"Bearer {CONFIG['vllm_api_key']}",
     }, method="POST")
     with request.urlopen(req, timeout=timeout_sec) as res:
         return json.loads(res.read().decode("utf-8"))
@@ -64,6 +66,9 @@ def _probe_vllm():
         req = request.Request(f"{VLLM_BASE_URL}/models", headers={"Accept": "application/json"})
         with request.urlopen(req, timeout=3) as res:
             return res.status == 200
+    except error.HTTPError as e:
+        # 401 Unauthorized = vLLM은 살아있지만 API_KEY 필요
+        return e.code == 401
     except Exception:
         return False
 
@@ -192,13 +197,19 @@ def _create_app():
 
         choices = data.get("choices") or []
         answer = ""
+        reasoning = ""
         if choices and isinstance(choices[0], dict):
             msg = choices[0].get("message") or {}
             answer = msg.get("content") or ""
+            reasoning = msg.get("reasoning") or ""
+            # reasoning 모델: content가 비어있으면 reasoning을 answer로
+            if not answer and reasoning:
+                answer = reasoning
 
         return jsonify({
             "query": q,
             "answer": answer,
+            "reasoning": reasoning,
             "usage": data.get("usage"),
             "meta": {
                 "model": CONFIG["model_name"],
