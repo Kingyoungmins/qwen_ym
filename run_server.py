@@ -21,7 +21,7 @@ CONFIG = {
     "vllm_host": os.environ.get("VLLM_HOST", "127.0.0.1"),
     "vllm_port": int(os.environ.get("VLLM_PORT", "8015")),
     "api_host": os.environ.get("API_HOST", "0.0.0.0"),
-    "api_port": int(os.environ.get("API_PORT", "8790")),
+    "api_port": int(os.environ.get("API_PORT", "8080")),
     "api_key": os.environ.get("API_KEY", "63616e76"),
     "vllm_api_key": os.environ.get("VLLM_API_KEY", "local-vllm"),
     "timeout_sec": int(os.environ.get("TIMEOUT_SEC", "180")),
@@ -37,12 +37,29 @@ VLLM_SCRIPT = SCRIPT_DIR / "start_vllm.sh"
 # 자동 pip 설치
 # ──────────────────────────────────────────────
 def _auto_install():
-    try:
-        __import__("flask")
-    except ImportError:
-        print("[new_vloet] flask 설치 중...")
+    """Flask + vLLM 등 필요한 패키지 자동 설치"""
+    # requirements.txt가 있으면 그걸로 설치
+    req_file = SCRIPT_DIR / "requirements.txt"
+    if req_file.exists():
+        print(f"[new_vloet] requirements.txt로 패키지 설치...")
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-U", "flask", "--break-system-packages"],
+            [sys.executable, "-m", "pip", "install", "-r", str(req_file), "--break-system-packages", "-q"],
+            stdout=sys.stdout, stderr=sys.stderr,
+        )
+        return
+
+    # requirements.txt 없으면 최소 패키지만 설치
+    required = {"flask": "flask", "vllm": "vllm", "huggingface_hub": "huggingface-hub"}
+    missing = []
+    for mod, pkg in required.items():
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print(f"[new_vloet] 누락 패키지 설치: {missing}")
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-U"] + missing + ["--break-system-packages"],
             stdout=sys.stdout, stderr=sys.stderr,
         )
 
@@ -79,12 +96,20 @@ def _probe_vllm():
 def _start_vllm_sh():
     """start_vllm.sh를 백그라운드 스레드에서 실행"""
     print(f"[new_vloet] start_vllm.sh 실행 중...")
-    logfile = open("/tmp/new_vloet_vllm.log", "w")
+    print(f"  스크립트: {VLLM_SCRIPT}")
+    print(f"  로그:     /tmp/new_vloet_vllm.log")
+
+    # start_vllm.sh에 전달할 환경변수 (기존 동작 방식과 동일)
+    vllm_env = {
+        **os.environ,
+        "HOST": os.environ.get("VLLM_HOST", "0.0.0.0"),
+        "PORT": str(CONFIG["vllm_port"]),
+        "VLLM_API_KEY": CONFIG["vllm_api_key"],
+    }
+
     proc = subprocess.Popen(
         ["bash", str(VLLM_SCRIPT)],
-        stdout=logfile,
-        stderr=subprocess.STDOUT,
-        env={**os.environ, "HOST": CONFIG["vllm_host"], "PORT": str(CONFIG["vllm_port"])},
+        env=vllm_env,
     )
     proc.wait()
     print(f"[new_vloet] ⚠ vLLM 종료 (exit={proc.returncode})")

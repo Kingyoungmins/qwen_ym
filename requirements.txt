@@ -1,0 +1,5 @@
+flask
+vllm
+huggingface-hub
+torch
+transformers
