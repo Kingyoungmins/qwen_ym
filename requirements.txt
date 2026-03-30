@@ -1,5 +1,5 @@
-flask
-vllm
-huggingface-hub
-torch
-transformers
+flask>=3.1.0
+vllm>=0.17.0
+huggingface-hub>=0.36.0
+torch>=2.6.0
+transformers>=4.51.0
