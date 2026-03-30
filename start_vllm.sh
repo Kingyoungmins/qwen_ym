@@ -17,6 +17,13 @@ REASONING_PARSER="${REASONING_PARSER:-qwen3}"
 TOOL_CALL_PARSER="${TOOL_CALL_PARSER:-qwen3_coder}"
 ENABLE_AUTO_TOOL_CHOICE="${ENABLE_AUTO_TOOL_CHOICE:-1}"
 
+# GPU 수 자동 감지
+if [ -z "${TP_SIZE:-}" ]; then
+  TP_SIZE=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)
+  [ "${TP_SIZE}" -lt 1 ] && TP_SIZE=1
+  echo "[start_vllm] GPU 자동 감지: ${TP_SIZE}개"
+fi
+
 if [ ! -f "${MODEL_DIR}/config.json" ]; then
   echo "Model config not found: ${MODEL_DIR}/config.json" >&2
   exit 1
@@ -27,7 +34,7 @@ ARGS=(
   --port "${PORT}"
   --served-model-name "${MODEL_NAME}"
   --api-key "${API_KEY}"
-  --tensor-parallel-size 1
+  --tensor-parallel-size "${TP_SIZE}"
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION}"
   --max-model-len "${MAX_MODEL_LEN}"
   --reasoning-parser "${REASONING_PARSER}"
