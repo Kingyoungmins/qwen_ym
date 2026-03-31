@@ -152,11 +152,11 @@ def _create_app():
         return decorated
 
     @app.route("/v1/models", methods=["GET"])
-    def models_health():
+    def health():
         return "OK"
 
     @app.route("/health", methods=["GET"])
-    def health():
+    def models_health():
         return jsonify({"ok": _probe_vllm(), "model": CONFIG["model_name"], "vllm_url": VLLM_BASE_URL})
 
     @app.route("/v1/models/t2i:predict", methods=["POST"])
