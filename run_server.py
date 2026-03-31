@@ -132,24 +132,6 @@ def _wait_for_vllm(timeout=600):
     return False
 
 
-# ──────────────────────────────────────────────
-# TLS 인증서
-# ──────────────────────────────────────────────
-CERT_DIR = SCRIPT_DIR / "certs"
-CERT_FILE = CERT_DIR / "cert.pem"
-KEY_FILE = CERT_DIR / "key.pem"
-
-
-def _ensure_tls_cert():
-    if CERT_FILE.exists() and KEY_FILE.exists():
-        return
-    CERT_DIR.mkdir(parents=True, exist_ok=True)
-    print("[new_vloet] TLS 인증서 생성...")
-    subprocess.check_call([
-        "openssl", "req", "-x509", "-newkey", "rsa:2048",
-        "-keyout", str(KEY_FILE), "-out", str(CERT_FILE),
-        "-days", "365", "-nodes", "-subj", "/CN=new-vloet-internal",
-    ])
 
 
 # ──────────────────────────────────────────────
@@ -251,7 +233,6 @@ def _create_app():
 # ──────────────────────────────────────────────
 if __name__ == "__main__":
     _auto_install()
-    _ensure_tls_cert()
 
     # vLLM이 이미 떠있으면 스킵, 아니면 .sh로 시작
     if _probe_vllm():
@@ -273,7 +254,7 @@ if __name__ == "__main__":
     print("=" * 60)
     print("  new_vloet - Qwen 3.5 27B FP8")
     print(f"  vLLM:      {VLLM_BASE_URL}")
-    print(f"  API:       https://{CONFIG['api_host']}:{CONFIG['api_port']}")
+    print(f"  API:       http://{CONFIG['api_host']}:{CONFIG['api_port']}")
     print(f"  엔드포인트: POST /v1/models/t2i:predict")
     print(f"  Api-Key:   {CONFIG['api_key']}")
     print("=" * 60)
@@ -281,5 +262,4 @@ if __name__ == "__main__":
     app.run(
         host=CONFIG["api_host"],
         port=CONFIG["api_port"],
-        ssl_context=(str(CERT_FILE), str(KEY_FILE)),
     )
