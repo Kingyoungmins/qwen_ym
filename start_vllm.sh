@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# WSL2에서 io_uring 문제로 Uvicorn accept이 안 되는 현상 방지
-export UVICORN_NO_IOURING=1
-export UV_USE_IO_URING=0
-
 MODEL_DIR="${MODEL_DIR:-/data/public/qwen3.5/Qwen3.5-27B-FP8}"
-HOST="${HOST:-127.0.0.1}"
-PORT="${PORT:-8015}"
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-8080}"
 MODEL_NAME="${MODEL_NAME:-Qwen3.5-27B-FP8}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-200000}"
